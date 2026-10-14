@@ -256,7 +256,41 @@ async function main() {
     }
   }
 
-  // Create Versions
+  // Clean up existing PDF resources and versions to ensure idempotent and clean association
+  await prisma.pdfResource.deleteMany({});
+  await prisma.slokaVersion.deleteMany({});
+
+  // Seed the 4 full compilation documents as general archival resources (for Downloads / Archival Access)
+  for (const s of sourcesData) {
+    const fullPath = path.join(storageDir, s.fileName);
+    const fileSize = fs.existsSync(fullPath) ? fs.statSync(fullPath).size : 0;
+    const sourceId = sourceMap.get(s.fileName);
+
+    let pageRef = 'Complete Archival Document';
+    if (s.fileName === 'TAMIL.pdf') pageRef = 'Complete Archival Compilation (46 pages)';
+    else if (s.fileName === 'ENGLISH.pdf') pageRef = 'Complete Archival Compilation (46 pages)';
+    else if (s.fileName === 'TELUGU.pdf') pageRef = 'Complete Archival Compilation (57 pages)';
+    else if (s.fileName === 'SRI MAHAGANAPATHI HOMAM JULY.pdf') pageRef = 'Official Programme & Parayanam Guide (2 pages)';
+
+    await prisma.pdfResource.create({
+      data: {
+        title: s.title,
+        sourceId,
+        fileName: s.fileName,
+        filePath: fullPath,
+        fileSize,
+        pageReference: pageRef,
+        licenseType: s.licenseInfo,
+        verificationStatus: VerificationStatus.VERIFIED,
+        isPublic: true
+      }
+    });
+  }
+
+  const manifestPath = path.resolve(__dirname, '../../data/intermediate/individual_pdfs_manifest.json');
+  const manifest = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) : {};
+
+  // Create Versions & Individual Mantra PDFs
   for (const v of versionsCatalog) {
     const slokaId = slokaMap.get(v.slokaSlug);
     if (!slokaId) continue;
@@ -284,32 +318,30 @@ async function main() {
       }
     });
 
-    // Create a PDF resource linked to this version and sloka
-    if (sourceId && v.sourceFile) {
-      const sourceRecord = sourcesData.find(sd => sd.fileName === v.sourceFile);
-      const filePath = path.join(storageDir, v.sourceFile);
-      const fileSize = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
+    // Check manifest for an individual extracted PDF matching this sloka and script
+    const scriptManifest = manifest[v.scriptCode] || [];
+    const pdfEntry = scriptManifest.find((entry: any) => entry.slug === v.slokaSlug);
 
-      const existingPdf = await prisma.pdfResource.findFirst({
-        where: { slokaVersionId: version.id, sourceId }
+    if (pdfEntry) {
+      const fullPath = path.resolve(__dirname, '../../', pdfEntry.relPath);
+      const fileSize = fs.existsSync(fullPath) ? fs.statSync(fullPath).size : pdfEntry.fileSize;
+      const sourceRecord = sourcesData.find(sd => sd.fileName === pdfEntry.sourceFile);
+
+      await prisma.pdfResource.create({
+        data: {
+          title: pdfEntry.title,
+          slokaId,
+          slokaVersionId: version.id,
+          sourceId: sourceMap.get(pdfEntry.sourceFile) || sourceId,
+          fileName: pdfEntry.fileName,
+          filePath: fullPath,
+          fileSize,
+          pageReference: pdfEntry.pageReference,
+          licenseType: sourceRecord?.licenseInfo || 'Educational Archive',
+          verificationStatus: VerificationStatus.VERIFIED,
+          isPublic: true
+        }
       });
-      if (!existingPdf) {
-        await prisma.pdfResource.create({
-          data: {
-            title: `${v.slokaSlug.toUpperCase()} - ${v.scriptCode} Edition (${v.sourceFile})`,
-            slokaId,
-            slokaVersionId: version.id,
-            sourceId,
-            fileName: v.sourceFile,
-            filePath,
-            fileSize,
-            pageReference: `Pages ${v.pageStart}–${v.pageEnd}`,
-            licenseType: sourceRecord?.licenseInfo || 'Educational Archive',
-            verificationStatus: VerificationStatus.VERIFIED,
-            isPublic: true
-          }
-        });
-      }
     }
   }
 

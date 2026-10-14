@@ -226,17 +226,17 @@ export const SlokaDetailsPage: React.FC = () => {
       </section>
 
       {/* SECTION E: DOWNLOADS SECTION */}
-      {sloka.pdfResources && sloka.pdfResources.length > 0 && (
+      {sloka.pdfResources && sloka.pdfResources.length > 0 ? (
         <section className="bg-white rounded-2xl border border-stone-200 p-6 sm:p-8 shadow-sm space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-stone-200">
             <div className="flex items-center space-x-2">
               <Download className="w-5 h-5 text-maroon-700" />
               <h3 className="font-heading text-lg font-bold text-stone-900">
-                Available PDF Editions ({sloka.pdfResources.length})
+                Available Individual PDF Editions ({sloka.pdfResources.length})
               </h3>
             </div>
             <span className="text-xs text-stone-500 font-serif">
-              Archival copies for personal parayanam study
+              Archival stotra copies extracted with verified page order
             </span>
           </div>
 
@@ -247,20 +247,29 @@ export const SlokaDetailsPage: React.FC = () => {
                 className="p-4 rounded-xl border border-stone-200 hover:border-gold-300 hover:shadow-2xs transition-all bg-stone-50/50 flex flex-col justify-between"
               >
                 <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-maroon-800 bg-maroon-50 px-2 py-0.5 rounded border border-maroon-200">
+                      {res.slokaVersion?.script?.name || (res.fileName.includes('tamil') ? 'Tamil' : res.fileName.includes('telugu') ? 'Telugu' : 'IAST English')}
+                    </span>
+                    <span className="text-[11px] font-mono text-stone-400">
+                      {(res.fileSize / 1024).toFixed(1)} KB
+                    </span>
+                  </div>
+
                   <h4 className="text-xs font-bold text-stone-900 font-serif line-clamp-1 mb-1">
                     {res.title}
                   </h4>
                   <span className="text-[11px] font-mono text-stone-500 block">
                     {res.fileName}
                   </span>
-                  <span className="text-[11px] text-stone-400 block mt-0.5">
+                  <span className="text-[11px] text-stone-500 block mt-0.5">
                     {res.pageReference || 'Full document'}
                   </span>
                 </div>
 
                 <div className="pt-3 mt-3 border-t border-stone-200 flex items-center justify-between">
                   <span className="text-[11px] font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded">
-                    PDF Document
+                    Verified Edition
                   </span>
                   <button
                     onClick={() => setSelectedDownload(res)}
@@ -272,6 +281,27 @@ export const SlokaDetailsPage: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+      ) : (
+        <section className="bg-stone-50 rounded-2xl border border-dashed border-stone-300 p-6 sm:p-8 space-y-3">
+          <div className="flex items-center space-x-2 text-stone-700">
+            <AlertCircle className="w-5 h-5 text-amber-600" />
+            <h3 className="font-heading text-base font-bold text-stone-900">
+              No Archival PDF Booklet Edition Attached
+            </h3>
+          </div>
+          <p className="text-xs sm:text-sm text-stone-600 font-serif leading-relaxed">
+            This composition is maintained in our digital verified database with complete verses and translations across traditional scripts. You can study it in the <strong>Multilingual Text Reader</strong> above or generate a high-resolution formatted prayer sheet via <strong>Print Leaflet</strong>.
+          </p>
+          <div className="pt-2">
+            <button
+              onClick={() => setPrintingModalOpen(true)}
+              className="px-4 py-2 rounded-lg bg-maroon-800 hover:bg-maroon-700 text-gold-200 text-xs font-semibold flex items-center space-x-1.5 shadow-2xs"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Generate Formatted PDF via Print Leaflet</span>
+            </button>
           </div>
         </section>
       )}

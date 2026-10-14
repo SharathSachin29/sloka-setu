@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
+import path from 'path';
+import fs from 'fs';
 import { prisma } from '../lib/prisma';
+import { config } from '../config';
 
 export const getSlokas = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -118,7 +121,20 @@ export const getSlokas = async (req: Request, res: Response, next: NextFunction)
           },
           pdfResources: {
             where: { isPublic: true },
-            select: { id: true, fileName: true, fileSize: true, title: true }
+            select: {
+              id: true,
+              fileName: true,
+              fileSize: true,
+              title: true,
+              pageReference: true,
+              slokaVersionId: true,
+              slokaVersion: {
+                select: {
+                  script: { select: { code: true, name: true } },
+                  language: { select: { code: true, name: true } }
+                }
+              }
+            }
           },
           _count: {
             select: { occasionSlokas: true }
@@ -175,7 +191,15 @@ export const getSlokaBySlug = async (req: Request, res: Response, next: NextFunc
         },
         pdfResources: {
           where: { isPublic: true },
-          include: { source: true }
+          include: {
+            source: true,
+            slokaVersion: {
+              include: {
+                script: true,
+                language: true
+              }
+            }
+          }
         },
         occasionSlokas: {
           include: {
@@ -346,3 +370,150 @@ export const getDailySloka = async (req: Request, res: Response, next: NextFunct
     next(err);
   }
 };
+
+export const downloadSlokaPdf = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { slugOrId } = req.params;
+    const requestedScript = req.query.script ? String(req.query.script).trim() : undefined;
+    const requestedLang = req.query.lang ? String(req.query.lang).trim().toLowerCase() : undefined;
+
+    const sloka = await prisma.sloka.findFirst({
+      where: {
+        OR: [{ slug: slugOrId }, { id: slugOrId }],
+        isPublished: true
+      },
+      include: {
+        pdfResources: {
+          where: { isPublic: true },
+          include: {
+            slokaVersion: {
+              include: {
+                script: true,
+                language: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!sloka) {
+      res.status(404).json({
+        success: false,
+        error: 'SLOKA_NOT_FOUND',
+        message: `Stotra '${slugOrId}' not found.`
+      });
+      return;
+    }
+
+    if (!sloka.pdfResources || sloka.pdfResources.length === 0) {
+      res.status(404).json({
+        success: false,
+        error: 'NO_INDIVIDUAL_PDF_AVAILABLE',
+        message: `No individual archival PDF edition is available for '${sloka.canonicalTitle}'. You can read the complete verified text across traditional scripts using our Multilingual Reader, or generate a high-resolution prayer leaflet via the Print Leaflet feature.`,
+        sloka: {
+          slug: sloka.slug,
+          canonicalTitle: sloka.canonicalTitle
+        },
+        readerUrl: `/slokas/${sloka.slug}`,
+        availableAlternatives: ['Multilingual Text Reader', 'Print Sacred Leaflet']
+      });
+      return;
+    }
+
+    // Match script / language if specified
+    let targetResource = sloka.pdfResources[0];
+
+    if (requestedScript || requestedLang) {
+      const match = sloka.pdfResources.find((r) => {
+        const scriptCode = r.slokaVersion?.script?.code?.toLowerCase();
+        const scriptName = r.slokaVersion?.script?.name?.toLowerCase();
+        const langCode = r.slokaVersion?.language?.code?.toLowerCase();
+        const fileName = r.fileName.toLowerCase();
+
+        if (requestedScript) {
+          const reqCode = requestedScript.toLowerCase();
+          if (scriptCode === reqCode) return true;
+          if (scriptName && scriptName.includes(reqCode)) return true;
+          if (fileName.includes(reqCode)) return true;
+          if (reqCode === 'taml' || reqCode === 'tamil' || reqCode === 'ta') {
+            if (scriptCode === 'taml' || fileName.includes('tamil')) return true;
+          }
+          if (reqCode === 'latn' || reqCode === 'english' || reqCode === 'en' || reqCode === 'roman') {
+            if (scriptCode === 'latn' || fileName.includes('english')) return true;
+          }
+          if (reqCode === 'telu' || reqCode === 'telugu' || reqCode === 'te') {
+            if (scriptCode === 'telu' || fileName.includes('telugu')) return true;
+          }
+        }
+
+        if (requestedLang) {
+          if (langCode === requestedLang) return true;
+          if (requestedLang === 'ta' && (scriptCode === 'taml' || fileName.includes('tamil'))) return true;
+          if (requestedLang === 'te' && (scriptCode === 'telu' || fileName.includes('telugu'))) return true;
+          if (requestedLang === 'en' && (scriptCode === 'latn' || fileName.includes('english'))) return true;
+        }
+
+        return false;
+      });
+
+      if (!match) {
+        res.status(404).json({
+          success: false,
+          error: 'SCRIPT_PDF_NOT_FOUND',
+          message: `No individual ${requestedScript || requestedLang} PDF edition is available for '${sloka.canonicalTitle}'. You can read the text in all scripts via the Multilingual Reader or generate a custom prayer leaflet.`,
+          sloka: {
+            slug: sloka.slug,
+            canonicalTitle: sloka.canonicalTitle
+          },
+          requestedScript: requestedScript || requestedLang,
+          availablePdfEditions: sloka.pdfResources.map((r) => ({
+            id: r.id,
+            title: r.title,
+            fileName: r.fileName,
+            script: r.slokaVersion?.script?.code || 'Unknown'
+          })),
+          readerUrl: `/slokas/${sloka.slug}`
+        });
+        return;
+      }
+
+      targetResource = match;
+    }
+
+    // Resolve physical path
+    const baseStorage = path.resolve(config.storageDir);
+    const resolvedPath = path.resolve(targetResource.filePath);
+
+    if (!resolvedPath.startsWith(baseStorage) && !resolvedPath.includes('storage')) {
+      res.status(400).json({ success: false, message: 'Invalid file path location.' });
+      return;
+    }
+
+    if (!fs.existsSync(resolvedPath)) {
+      res.status(404).json({
+        success: false,
+        message: 'The physical PDF file is currently unavailable in server storage.',
+        fileName: targetResource.fileName
+      });
+      return;
+    }
+
+    // Increment download count asynchronously
+    await prisma.pdfResource.update({
+      where: { id: targetResource.id },
+      data: { downloadCount: { increment: 1 } }
+    }).catch((err) => console.error('Failed to update download count:', err));
+
+    // Stream the file
+    const filename = targetResource.fileName || path.basename(resolvedPath);
+    res.setHeader('Content-Type', targetResource.mimeType || 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+
+    const fileStream = fs.createReadStream(resolvedPath);
+    fileStream.pipe(res);
+  } catch (err) {
+    next(err);
+  }
+};
+

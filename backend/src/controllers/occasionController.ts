@@ -66,7 +66,20 @@ export const getOccasions = async (req: Request, res: Response, next: NextFuncti
                 },
                 pdfResources: {
                   where: { isPublic: true },
-                  select: { id: true, fileName: true, fileSize: true, title: true }
+                  select: {
+                    id: true,
+                    fileName: true,
+                    fileSize: true,
+                    title: true,
+                    pageReference: true,
+                    slokaVersionId: true,
+                    slokaVersion: {
+                      select: {
+                        script: { select: { code: true, name: true } },
+                        language: { select: { code: true, name: true } }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -130,7 +143,20 @@ export const getOccasionBySlug = async (req: Request, res: Response, next: NextF
                 },
                 pdfResources: {
                   where: { isPublic: true },
-                  select: { id: true, fileName: true, fileSize: true }
+                  select: {
+                    id: true,
+                    fileName: true,
+                    fileSize: true,
+                    title: true,
+                    pageReference: true,
+                    slokaVersionId: true,
+                    slokaVersion: {
+                      select: {
+                        script: { select: { code: true, name: true } },
+                        language: { select: { code: true, name: true } }
+                      }
+                    }
+                  }
                 }
               }
             }

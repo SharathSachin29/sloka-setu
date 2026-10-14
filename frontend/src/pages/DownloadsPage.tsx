@@ -15,42 +15,43 @@ export const DownloadsPage: React.FC = () => {
     const fetchResources = async () => {
       try {
         setLoading(true);
-        // We can fetch resources via public endpoint or slokas/occasions
-        const [slokasRes, occasionsRes] = await Promise.all([
-          apiClient.get('/slokas?limit=50'),
-          apiClient.get('/occasions')
-        ]);
-
-        const allRes: PdfResource[] = [];
-        const seenIds = new Set<string>();
-
-        if (occasionsRes.data.success) {
-          occasionsRes.data.data.forEach((o: any) => {
-            if (o.pdfResources) {
-              o.pdfResources.forEach((r: PdfResource) => {
-                if (!seenIds.has(r.id)) {
-                  seenIds.add(r.id);
-                  allRes.push(r);
-                }
-              });
-            }
-          });
+        const res = await apiClient.get('/resources');
+        if (res.data.success && Array.isArray(res.data.data)) {
+          setResources(res.data.data);
+        } else {
+          // Fallback if needed
+          const [slokasRes, occasionsRes] = await Promise.all([
+            apiClient.get('/slokas?limit=50'),
+            apiClient.get('/occasions')
+          ]);
+          const allRes: PdfResource[] = [];
+          const seenIds = new Set<string>();
+          if (occasionsRes.data.success) {
+            occasionsRes.data.data.forEach((o: any) => {
+              if (o.pdfResources) {
+                o.pdfResources.forEach((r: PdfResource) => {
+                  if (!seenIds.has(r.id)) {
+                    seenIds.add(r.id);
+                    allRes.push(r);
+                  }
+                });
+              }
+            });
+          }
+          if (slokasRes.data.success) {
+            slokasRes.data.data.forEach((s: any) => {
+              if (s.pdfResources) {
+                s.pdfResources.forEach((r: PdfResource) => {
+                  if (!seenIds.has(r.id)) {
+                    seenIds.add(r.id);
+                    allRes.push(r);
+                  }
+                });
+              }
+            });
+          }
+          setResources(allRes);
         }
-
-        if (slokasRes.data.success) {
-          slokasRes.data.data.forEach((s: any) => {
-            if (s.pdfResources) {
-              s.pdfResources.forEach((r: PdfResource) => {
-                if (!seenIds.has(r.id)) {
-                  seenIds.add(r.id);
-                  allRes.push(r);
-                }
-              });
-            }
-          });
-        }
-
-        setResources(allRes);
       } catch (err) {
         console.error('Failed to load resources:', err);
       } finally {
@@ -71,10 +72,25 @@ export const DownloadsPage: React.FC = () => {
   const filteredResources = resources.filter(r => {
     const matchesSearch = searchTerm.trim() === '' ||
       r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.fileName.toLowerCase().includes(searchTerm.toLowerCase());
+      r.fileName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.pageReference && r.pageReference.toLowerCase().includes(searchTerm.toLowerCase()));
     
-    const matchesSource = sourceFilter === 'all' || r.fileName === sourceFilter;
-    return matchesSearch && matchesSource;
+    let matchesCategory = true;
+    if (sourceFilter === 'compilations') {
+      matchesCategory = !r.slokaId && !r.occasionId;
+    } else if (sourceFilter === 'tamil') {
+      matchesCategory = r.fileName.toLowerCase().includes('tamil') && !!r.slokaId;
+    } else if (sourceFilter === 'english') {
+      matchesCategory = (r.fileName.toLowerCase().includes('english') || r.fileName.toLowerCase().includes('iast')) && !!r.slokaId;
+    } else if (sourceFilter === 'telugu') {
+      matchesCategory = r.fileName.toLowerCase().includes('telugu') && !!r.slokaId;
+    } else if (sourceFilter === 'occasion') {
+      matchesCategory = !!r.occasionId;
+    } else if (sourceFilter !== 'all') {
+      matchesCategory = r.fileName === sourceFilter;
+    }
+
+    return matchesSearch && matchesCategory;
   });
 
   return (
@@ -90,12 +106,12 @@ export const DownloadsPage: React.FC = () => {
             PDF Prayer Resources & Downloads
           </h1>
           <p className="text-xs sm:text-sm text-stone-600 font-serif mt-1 max-w-2xl">
-            Download verified devotional stotra collections and Amrita institutional event circulars with complete source tracking and licensing metadata.
+            Download individual stotra PDFs in Tamil, Telugu, and English, or access complete archival compilation booklets and Amrita institutional circulars.
           </p>
         </div>
 
         <div className="text-xs font-semibold text-stone-500 bg-stone-100 px-3.5 py-1.5 rounded-full border border-stone-200 self-start md:self-auto">
-          <strong>{resources.length}</strong> verified PDF editions
+          <strong>{filteredResources.length}</strong> of <strong>{resources.length}</strong> verified PDF editions
         </div>
       </div>
 
@@ -107,25 +123,50 @@ export const DownloadsPage: React.FC = () => {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Filter by title or filename..."
+            placeholder="Filter by stotra title or filename..."
             className="w-full pl-10 pr-4 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-maroon-700"
           />
         </div>
 
         <div className="flex items-center space-x-2 w-full sm:w-auto">
-          <span className="text-xs text-stone-500 whitespace-nowrap font-medium">Source Document:</span>
+          <span className="text-xs text-stone-500 whitespace-nowrap font-medium">Collection Filter:</span>
           <select
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}
             className="px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs font-medium text-stone-800 focus:outline-none"
           >
-            <option value="all">All Source Files</option>
-            <option value="SRI MAHAGANAPATHI HOMAM JULY.pdf">SRI MAHAGANAPATHI HOMAM JULY.pdf</option>
-            <option value="ENGLISH.pdf">ENGLISH.pdf (Roman IAST)</option>
-            <option value="TELUGU.pdf">TELUGU.pdf (Telugu Script)</option>
-            <option value="TAMIL.pdf">TAMIL.pdf (Tamil Script)</option>
+            <option value="all">All Documents & Stotras</option>
+            <option value="tamil">Tamil Stotras (Individual PDFs)</option>
+            <option value="english">English / IAST Stotras (Individual PDFs)</option>
+            <option value="telugu">Telugu Stotras (Individual PDFs)</option>
+            <option value="compilations">Complete Archival Compilations (Full Books)</option>
+            <option value="occasion">Amrita Institutional Circulars</option>
           </select>
         </div>
+      </div>
+
+      {/* Quick Filter Pills */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        {[
+          { id: 'all', label: 'All Documents' },
+          { id: 'tamil', label: 'Tamil Stotras' },
+          { id: 'english', label: 'English Stotras' },
+          { id: 'telugu', label: 'Telugu Stotras' },
+          { id: 'compilations', label: 'Full Compilation Books' },
+          { id: 'occasion', label: 'Institutional Circulars' }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setSourceFilter(tab.id)}
+            className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+              sourceFilter === tab.id
+                ? 'bg-maroon-800 text-gold-200 shadow-2xs font-semibold'
+                : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* Resources Table / Cards */}
@@ -140,51 +181,76 @@ export const DownloadsPage: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredResources.map((res) => (
-            <div
-              key={res.id}
-              className="p-5 rounded-xl bg-white border border-stone-200 hover:border-gold-300 hover:shadow-md transition-all flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center space-x-1">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                    <span>Verified</span>
-                  </span>
-                  <span className="text-[11px] font-mono text-stone-400">
-                    {formatFileSize(res.fileSize)}
-                  </span>
+          {filteredResources.map((res) => {
+            const isCompilation = !res.slokaId && !res.occasionId;
+            const isOccasion = !!res.occasionId;
+            const isTamil = res.fileName.toLowerCase().includes('tamil');
+            const isTelugu = res.fileName.toLowerCase().includes('telugu');
+            const isEnglish = res.fileName.toLowerCase().includes('english');
+
+            return (
+              <div
+                key={res.id}
+                className="p-5 rounded-xl bg-white border border-stone-200 hover:border-gold-300 hover:shadow-md transition-all flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    {isCompilation ? (
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 flex items-center space-x-1">
+                        <FileText className="w-3 h-3 text-purple-700" />
+                        <span>Full Archival Book</span>
+                      </span>
+                    ) : isOccasion ? (
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-maroon-900 bg-maroon-50 px-2 py-0.5 rounded border border-maroon-200 flex items-center space-x-1">
+                        <Shield className="w-3 h-3 text-maroon-700" />
+                        <span>Institutional Circular</span>
+                      </span>
+                    ) : (
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border flex items-center space-x-1 ${
+                        isTamil ? 'text-amber-900 bg-amber-50 border-amber-200' :
+                        isTelugu ? 'text-blue-900 bg-blue-50 border-blue-200' :
+                        'text-emerald-900 bg-emerald-50 border-emerald-200'
+                      }`}>
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>{isTamil ? 'Tamil Stotra' : isTelugu ? 'Telugu Stotra' : 'English Stotra'}</span>
+                      </span>
+                    )}
+
+                    <span className="text-[11px] font-mono text-stone-400">
+                      {formatFileSize(res.fileSize)}
+                    </span>
+                  </div>
+
+                  <h3 className="font-heading text-sm font-bold text-stone-900 mb-1 font-serif line-clamp-2">
+                    {res.title}
+                  </h3>
+
+                  <p className="text-xs font-mono text-stone-500 mb-2 truncate">
+                    {res.fileName}
+                  </p>
+
+                  <div className="text-[11px] text-stone-400 space-y-0.5">
+                    <div>Reference: <strong>{res.pageReference || 'Full document'}</strong></div>
+                    <div>License: {res.licenseType}</div>
+                  </div>
                 </div>
 
-                <h3 className="font-heading text-sm font-bold text-stone-900 mb-1 font-serif line-clamp-2">
-                  {res.title}
-                </h3>
+                <div className="pt-3 mt-4 border-t border-stone-100 flex items-center justify-between">
+                  <span className="text-[11px] text-stone-400">
+                    {res.downloadCount || 0} downloads
+                  </span>
 
-                <p className="text-xs font-mono text-stone-500 mb-2 truncate">
-                  {res.fileName}
-                </p>
-
-                <div className="text-[11px] text-stone-400 space-y-0.5">
-                  <div>Reference: <strong>{res.pageReference || 'Full document'}</strong></div>
-                  <div>License: {res.licenseType}</div>
+                  <button
+                    onClick={() => setSelectedDownload(res)}
+                    className="px-3.5 py-1.5 rounded-lg bg-maroon-800 hover:bg-maroon-700 text-gold-200 text-xs font-bold transition-colors flex items-center space-x-1 shadow-2xs"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download</span>
+                  </button>
                 </div>
               </div>
-
-              <div className="pt-3 mt-4 border-t border-stone-100 flex items-center justify-between">
-                <span className="text-[11px] text-stone-400">
-                  {res.downloadCount || 0} downloads
-                </span>
-
-                <button
-                  onClick={() => setSelectedDownload(res)}
-                  className="px-3.5 py-1.5 rounded-lg bg-maroon-800 hover:bg-maroon-700 text-gold-200 text-xs font-bold transition-colors flex items-center space-x-1 shadow-2xs"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download</span>
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

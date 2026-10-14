@@ -82,6 +82,14 @@ export interface PdfResource {
   isPublic: boolean;
   downloadCount: number;
   createdAt: string;
+  source?: { id: string; title: string; fileName: string };
+  sloka?: { id: string; slug: string; canonicalTitle: string };
+  slokaVersion?: {
+    id?: string;
+    script?: { id?: string; code: string; name: string };
+    language?: { id?: string; code: string; name: string };
+  };
+  occasion?: { id: string; slug: string; name: string };
 }
 
 export interface SlokaAlias {

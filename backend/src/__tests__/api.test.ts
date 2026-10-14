@@ -137,4 +137,46 @@ describe('SlokaSetu API Test Suite', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
+
+  // --- Bug Fix Verification: Individual Tamil PDF Downloads ---
+  it('GET /api/slokas/maha-ganesha-pancharatnam/pdf?script=Taml should return individual Tamil PDF, not full TAMIL.pdf booklet', async () => {
+    const res = await request(app).get('/api/slokas/maha-ganesha-pancharatnam/pdf?script=Taml');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.headers['content-disposition']).toContain('maha-ganesha-pancharatnam-tamil.pdf');
+  });
+
+  it('GET /api/slokas/lingashtakam/pdf?script=Taml should return individual lingashtakam-tamil.pdf', async () => {
+    const res = await request(app).get('/api/slokas/lingashtakam/pdf?script=Taml');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.headers['content-disposition']).toContain('lingashtakam-tamil.pdf');
+  });
+
+  it('GET /api/slokas/mahalakshmi-ashtakam/pdf?script=Taml should return individual mahalakshmi-ashtakam-tamil.pdf', async () => {
+    const res = await request(app).get('/api/slokas/mahalakshmi-ashtakam/pdf?script=Taml');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.headers['content-disposition']).toContain('mahalakshmi-ashtakam-tamil.pdf');
+  });
+
+  it('GET /api/slokas/lalita-sahasranama-stotram/pdf?script=Taml should return 404 with guidance message instead of full booklet fallback', async () => {
+    const res = await request(app).get('/api/slokas/lalita-sahasranama-stotram/pdf?script=Taml');
+    expect(res.status).toBe(404);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toBe('NO_INDIVIDUAL_PDF_AVAILABLE');
+    expect(res.body.message).toContain('No individual archival PDF edition is available');
+  });
+
+  it('GET /api/resources should return full PDF resources catalog with individual stotras and compilations', async () => {
+    const res = await request(app).get('/api/resources');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.count).toBeGreaterThan(70);
+    const compilations = res.body.data.filter((r: any) => !r.slokaId && !r.occasionId);
+    expect(compilations.some((c: any) => c.fileName === 'TAMIL.pdf')).toBe(true);
+    expect(compilations.some((c: any) => c.fileName === 'ENGLISH.pdf')).toBe(true);
+    expect(compilations.some((c: any) => c.fileName === 'TELUGU.pdf')).toBe(true);
+  });
 });
+

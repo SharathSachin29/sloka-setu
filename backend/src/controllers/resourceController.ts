@@ -80,3 +80,55 @@ export const getVersionResources = async (req: Request, res: Response, next: Nex
     next(err);
   }
 };
+
+export const getAllResources = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { type, script, search } = req.query;
+    const where: any = { isPublic: true };
+
+    if (type === 'compilation') {
+      where.slokaVersionId = null;
+      where.slokaId = null;
+    } else if (type === 'stotra') {
+      where.slokaId = { not: null };
+    } else if (type === 'occasion') {
+      where.occasionId = { not: null };
+    }
+
+    if (search) {
+      const q = String(search).trim();
+      where.OR = [
+        { title: { contains: q, mode: 'insensitive' } },
+        { fileName: { contains: q, mode: 'insensitive' } }
+      ];
+    }
+
+    const resources = await prisma.pdfResource.findMany({
+      where,
+      include: {
+        source: true,
+        sloka: { select: { id: true, slug: true, canonicalTitle: true } },
+        slokaVersion: {
+          include: {
+            script: true,
+            language: true
+          }
+        },
+        occasion: { select: { id: true, slug: true, name: true } }
+      },
+      orderBy: [
+        { createdAt: 'asc' },
+        { fileName: 'asc' }
+      ]
+    });
+
+    res.json({
+      success: true,
+      count: resources.length,
+      data: resources
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+

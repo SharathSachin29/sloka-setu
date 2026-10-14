@@ -318,6 +318,44 @@ export const CalendarPage: React.FC = () => {
     return lines.slice(0, 2).join('\n');
   };
 
+  const getPdfForScript = (sloka: Sloka, scriptCode: string): PdfResource | undefined => {
+    if (!sloka.pdfResources || sloka.pdfResources.length === 0) return undefined;
+
+    // 1. Exact match by linked version script code
+    const exact = sloka.pdfResources.find(
+      (r) => r.slokaVersion?.script?.code === scriptCode
+    );
+    if (exact) return exact;
+
+    // 2. Keyword match in filename or title
+    const scriptKeywords: Record<string, string> = {
+      Taml: 'tamil',
+      Latn: 'english',
+      Telu: 'telugu',
+      Deva: 'devanagari'
+    };
+    const keyword = scriptKeywords[scriptCode] || scriptCode.toLowerCase();
+    const nameMatch = sloka.pdfResources.find(
+      (r) => r.fileName.toLowerCase().includes(keyword) || r.title.toLowerCase().includes(keyword)
+    );
+    if (nameMatch) return nameMatch;
+
+    // 3. Fallback only if there is a single PDF edition
+    if (sloka.pdfResources.length === 1) {
+      return sloka.pdfResources[0];
+    }
+
+    return undefined;
+  };
+
+  const getScriptName = (code: string) => {
+    if (code === 'Taml') return 'Tamil';
+    if (code === 'Telu') return 'Telugu';
+    if (code === 'Latn') return 'IAST English';
+    if (code === 'Deva') return 'Devanagari';
+    return code;
+  };
+
   const scriptOptions = [
     { code: 'Deva', label: 'देवनागरी', sub: 'Sanskrit' },
     { code: 'Latn', label: 'English (IAST)', sub: 'Romanized' },
@@ -837,15 +875,21 @@ export const CalendarPage: React.FC = () => {
                                     <Printer className="w-3.5 h-3.5" />
                                   </button>
 
-                                  {hasPdf && (
-                                    <button
-                                      onClick={() => setDownloadResource(os.sloka.pdfResources![0])}
-                                      className="p-1 rounded text-stone-500 hover:text-maroon-800 hover:bg-white border border-transparent hover:border-stone-200"
-                                      title="Download PDF"
-                                    >
-                                      <Download className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
+                                  {(() => {
+                                    const scriptPdf = getPdfForScript(os.sloka, activeScript);
+                                    if (scriptPdf) {
+                                      return (
+                                        <button
+                                          onClick={() => setDownloadResource(scriptPdf)}
+                                          className="p-1 rounded text-stone-500 hover:text-maroon-800 hover:bg-white border border-transparent hover:border-gold-300 transition-colors"
+                                          title={`Download ${getScriptName(activeScript)} PDF (${scriptPdf.fileName})`}
+                                        >
+                                          <Download className="w-3.5 h-3.5 text-maroon-800" />
+                                        </button>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
                                   <button
                                     onClick={() => handleOpenSloka(os.sloka)}
                                     className="px-2.5 py-1 bg-maroon-800 hover:bg-maroon-900 text-gold-200 rounded text-[11px] font-semibold flex items-center space-x-1 shadow-2xs"
@@ -1020,15 +1064,31 @@ export const CalendarPage: React.FC = () => {
                   <Star className={`w-3.5 h-3.5 ${isBookmarked(readingSloka.slug) ? 'fill-current' : ''}`} />
                 </button>
 
-                {readingSloka.pdfResources && readingSloka.pdfResources.length > 0 && (
-                  <button
-                    onClick={() => setDownloadResource(readingSloka.pdfResources![0])}
-                    className="px-3 py-1.5 rounded-lg bg-gold-500 hover:bg-gold-600 text-stone-950 font-semibold text-xs flex items-center space-x-1 shadow-xs"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Download PDF</span>
-                  </button>
-                )}
+                {readingSloka && (() => {
+                  const modalPdf = getPdfForScript(readingSloka, activeScript);
+                  return modalPdf ? (
+                    <button
+                      onClick={() => setDownloadResource(modalPdf)}
+                      className="px-3 py-1.5 rounded-lg bg-gold-500 hover:bg-gold-600 text-stone-950 font-semibold text-xs flex items-center space-x-1 shadow-xs"
+                      title={`Download ${modalPdf.fileName}`}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Download PDF ({getScriptName(activeScript)})</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setPrintingSloka(readingSloka);
+                        setReadingSloka(null);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white border border-white/20 font-semibold text-xs flex items-center space-x-1 shadow-xs"
+                      title="Generate formatted prayer sheet via Print Leaflet"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-gold-300" />
+                      <span className="hidden sm:inline">Print Sacred Leaflet</span>
+                    </button>
+                  );
+                })()}
                 <button
                   onClick={() => setReadingSloka(null)}
                   className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"

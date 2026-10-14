@@ -14,12 +14,14 @@ import {
   getSlokaBySlug,
   getSlokaVersions,
   getSlokaRelated,
-  getDailySloka
+  getDailySloka,
+  downloadSlokaPdf
 } from '../controllers/slokaController';
 import { globalSearch } from '../controllers/searchController';
 import {
   downloadResource,
-  getVersionResources
+  getVersionResources,
+  getAllResources
 } from '../controllers/resourceController';
 import {
   getMetadata,
@@ -88,6 +90,8 @@ router.get('/occasions/:id/dates', getOccasionDates);
 router.get('/slokas', getSlokas);
 router.get('/slokas/daily', getDailySloka);
 router.get('/slokas/:slugOrId', getSlokaBySlug);
+router.get('/slokas/:slugOrId/pdf', downloadSlokaPdf);
+router.get('/slokas/:slugOrId/download', downloadSlokaPdf);
 router.get('/slokas/:id/versions', getSlokaVersions);
 router.get('/slokas/:id/related', getSlokaRelated);
 
@@ -95,6 +99,7 @@ router.get('/slokas/:id/related', getSlokaRelated);
 router.get('/search', globalSearch);
 
 // PDF Downloads & Resources
+router.get('/resources', getAllResources);
 router.get('/versions/:id/resources', getVersionResources);
 router.get('/resources/:id/download', downloadResource);
 
